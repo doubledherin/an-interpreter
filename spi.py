@@ -1,3 +1,5 @@
+from collections import OrderedDict
+
 """ SPI - Simple Pascal Interpreter """
 
 ###############################################################################
@@ -457,7 +459,7 @@ class Parser(object):
 
 ###############################################################################
 #                                                                             #
-#  INTERPRETER                                                                #
+# AST visitors (walkers)                                                      #
 #                                                                             #
 ###############################################################################
 
@@ -468,6 +470,104 @@ class NodeVisitor(object):
         return visitor(node)
     def generic_visit(self, node):
         raise Exception('No visit_{} method'.format(type(node).__name__))
+
+
+###############################################################################
+#                                                                             #
+#  SYMBOLS and SYMBOL TABLE and SYMBOL TABLE BUILDER                                                 #
+#                                                                             #
+###############################################################################
+
+class Symbol(object):
+    def __init__(self, name, type=None):
+        self.name = name
+        self.type = type
+
+class BuiltInSymbol(Symbol):
+    def __init__(self, name):
+        super(BuiltInSymbol, self).__init__(name)
+
+    def __str__(self):
+        return self.name
+
+    __repr__ = __str__
+
+class VariableSymbol(Symbol):
+    def __init__(self, name, type):
+        super(VariableSymbol, self).__init__(name, type)
+
+    def __str__(self):
+        return '<{name}: {type}>'.format(name=self.name, type=self.type)
+
+    __repr__ = __str__
+
+class SymbolTable():
+    def __init__(self):
+        self._symbols = OrderedDict()
+        self._init_builtins()
+
+    def _init_builtins(self):
+        self.define(BuiltInSymbol('REAL'))
+        self.define(BuiltInSymbol('INTEGER'))
+
+    def __str__(self):
+        symbol_table = 'Symbols: {symbols}'.format(symbols=[
+            value for value in self._symbols.values()
+        ])
+        return symbol_table
+
+    __repr__ = __str__
+
+    def define(self, symbol):
+        print 'Define: {symbol}'.format(symbol=symbol)
+        self._symbols[symbol.name] = symbol
+
+    def lookup(self, name):
+        print 'Look up: {}'.format(name)
+        return self._symbols.get(name)
+
+class SymbolTableBuilder(NodeVisitor):
+    def __init__(self):
+        self.table = SymbolTable()
+
+    def visit_Block(self, node):
+        for declaration in node.declarations:
+            self.visit(declaration)
+        self.visit(node.compound_statement)
+
+    def visit_Program(self, node):
+        self.visit(node.block)
+
+    def visit_BinOp(self, node):
+        self.visit(node.left)
+        self.visit(node.right)
+
+    def visit_Num(self, node):
+        pass
+
+    def visit_UnaryOp(self, node):
+        self.visit(node.expr)
+
+    def visit_Compound(self, node):
+        for child in node.children:
+            self.visit(child)
+
+    def visit_NoOp(self, node):
+        pass
+
+    def visit_VarDecl(self, node):
+        type_name = node.type_node.value
+        type_symbol = self.table.lookup(type_name)
+        # import pdb; pdb.set_trace()
+        var_name = node.var_node.value
+        variable_symbol = VariableSymbol(var_name, type_symbol)
+        self.table.define(variable_symbol)
+
+###############################################################################
+#                                                                             #
+#  INTERPRETER                                                                #
+#                                                                             #
+###############################################################################
 
 class Interpreter(NodeVisitor):
 
@@ -533,6 +633,11 @@ class Interpreter(NodeVisitor):
     def interpret(self):
         tree = self.parser.parse()
         return self.visit(tree)
+
+
+
+
+
 
 
 def main():
