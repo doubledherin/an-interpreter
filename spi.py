@@ -12,7 +12,8 @@ from collections import OrderedDict
 #
 # EOF (end-of-file) token is used to indicate that
 # there is no more input left for lexical analysis
-INTEGER, REAL, INTEGER_CONST, REAL_CONST, PLUS, MINUS, MULTIPLY, INTEGER_DIV, FLOAT_DIV, LPAREN, RPAREN, EOF, BEGIN, END, DOT, ASSIGN, SEMI, ID, PROGRAM, VAR, COLON, COMMA = (
+PROCEDURE, INTEGER, REAL, INTEGER_CONST, REAL_CONST, PLUS, MINUS, MULTIPLY, INTEGER_DIV, FLOAT_DIV, LPAREN, RPAREN, EOF, BEGIN, END, DOT, ASSIGN, SEMI, ID, PROGRAM, VAR, COLON, COMMA = (
+    'PROCEDURE',
     'INTEGER',
     'REAL',
     'INTEGER_CONST',
@@ -61,13 +62,14 @@ class Token(object):
         return self.__str__()
 
 RESERVED_KEYWORDS = {
-    'PROGRAM': Token('PROGRAM', 'PROGRAM'),
-    'VAR': Token('VAR', 'VAR'),
+    'BEGIN': Token('BEGIN', 'BEGIN'),
     'DIV': Token('INTEGER_DIV', 'DIV'),
+    'END': Token('END', 'END'),
+    'PROCEDURE': Token('PROCEDURE', 'PROCEDURE'),
+    'PROGRAM': Token('PROGRAM', 'PROGRAM'),
     'INTEGER': Token('INTEGER', 'INTEGER'),
     'REAL': Token('REAL', 'REAL'),
-    'BEGIN': Token('BEGIN', 'BEGIN'),
-    'END': Token('END', 'END'),
+    'VAR': Token('VAR', 'VAR'),
 }
 
 class Lexer(object):
@@ -202,6 +204,11 @@ class Program(AST):
         self.name = name
         self.block = block
 
+class ProcedureDeclaration(AST):
+    def __init__(self, name, block):
+        self.name = name
+        self.block = block
+
 class Block(AST):
     def __init__(self, declarations, compound_statement):
         self.declarations = declarations
@@ -275,7 +282,10 @@ class Parser(object):
         return node
 
     def declarations(self):
-        """declarations: VAR (variable_declaration SEMI)+ | empty"""
+        """
+            declarations: VAR (variable_declaration SEMI)+
+            | (PROCEDURE ID SEMI BLOCK SEMI)*
+            | empty"""
         declarations = []
         if self.current_token.type == VAR:
             self.eat(VAR)
@@ -283,6 +293,15 @@ class Parser(object):
                 var_decl = self.variable_declaration()
                 declarations.extend(var_decl)
                 self.eat(SEMI)
+        if self.current_token.type == PROCEDURE:
+            self.eat(PROCEDURE)
+            name = self.current_token.value
+            self.eat(ID)
+            self.eat(SEMI)
+            block_node = self.block()
+            procedure_declaration = ProcedureDeclaration(name, block_node)
+            declarations.append(procedure_declaration)
+            self.eat(SEMI)
         return declarations
 
     def variable_declaration(self):
@@ -527,16 +546,21 @@ class SymbolTable():
         return self._symbols.get(name)
 
 class SymbolTableBuilder(NodeVisitor):
+    GLOBAL_SCOPE = {}
+
     def __init__(self):
         self.table = SymbolTable()
+
+    def visit_Program(self, node):
+        self.visit(node.block)
+
+    def visit_ProcedureDeclaration(self, node):
+        pass
 
     def visit_Block(self, node):
         for declaration in node.declarations:
             self.visit(declaration)
         self.visit(node.compound_statement)
-
-    def visit_Program(self, node):
-        self.visit(node.block)
 
     def visit_BinOp(self, node):
         self.visit(node.left)
@@ -554,6 +578,10 @@ class SymbolTableBuilder(NodeVisitor):
 
     def visit_NoOp(self, node):
         pass
+
+    def visit_Assign(self, node):
+        var_name = node.left.value
+        self.GLOBAL_SCOPE[var_name] = self.visit(node.right)
 
     def visit_VarDecl(self, node):
         type_name = node.type_node.value
@@ -599,6 +627,9 @@ class Interpreter(NodeVisitor):
 
     def visit_Program(self, node):
         self.visit(node.block)
+
+    def visit_ProcedureDeclaration(self, node):
+        pass
 
     def visit_Block(self, node):
         for declaration in node.declarations:
