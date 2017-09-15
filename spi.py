@@ -599,10 +599,9 @@ class SymbolTableBuilder(NodeVisitor):
 
 class Interpreter(NodeVisitor):
 
-    GLOBAL_SCOPE = {}
-
-    def __init__(self, parser):
-        self.parser = parser
+    def __init__(self, tree):
+        self.tree = tree
+        self.GLOBAL_SCOPE = OrderedDict()
 
     def visit_UnaryOp(self, node):
         if node.op.type == PLUS:
@@ -662,7 +661,9 @@ class Interpreter(NodeVisitor):
             return val
 
     def interpret(self):
-        tree = self.parser.parse()
+        tree = self.tree
+        if tree is None:
+            return ''
         return self.visit(tree)
 
 
